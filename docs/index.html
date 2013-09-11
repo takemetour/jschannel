@@ -422,20 +422,38 @@ snippet(function() {
 </script>
 </div>
 
-<h3>Timeouts</h3>
 
-<p>Clients can also be notified if a remote method invocation takes too long to complete by passing a <code>timeout</code> parameter to a channel's <code>call()</code> method.</p>
+<h3>Non-existent method</h3>
 
-<p>For instance, we can try calling a nonexistent method with a timeout:</p>
+<p>Trying to invoke a method that does not exist causes the error callback to be called:
 
 <script class="doctest">
 snippet(function() {
   chan.call({method: "nonexistent",
+    error: emit,
+    success: emit});
+  wait();
+  // expect: out("method_not_found", "No method 'nonexistent' was (yet) bound by the provider")
+});
+</script>
+
+
+<h3>Timeouts</h3>
+
+<p>Clients can also be notified if a remote method invocation takes too long to complete by passing a <code>timeout</code> parameter to a channel's <code>call()</code> method.</p>
+
+<p>For instance, we can try calling a slow asynchronous method with a timeout:</p>
+
+<div class="child-code-snippet" id="timeouting"></div>
+
+<script class="doctest">
+snippet(function() {
+  chan.call({method: "timeouting",
              timeout: 50,
              error: emit,
              success: emit});
   wait();
-  // expect: out("timeout_error", "timeout (50ms) exceeded on method 'testScope::nonexistent'")
+  // expect: out("timeout_error", "timeout (50ms) exceeded on method 'testScope::timeouting'")
 });
 </script>
 
@@ -445,14 +463,12 @@ snippet(function() {
 <script class="doctest">
 snippet(function() {
   var x = [];
-  chan.call({ method: "echo",
-              params: "echo called",
-              timeout: 100,
-              error: function(e, m) { x.push(e); },
-              success: function(m) { x.push(m); }});
-  setTimeout(function() { emit.apply(null, x); }, 250);
+  chan.call({ method: "timeouting",
+              timeout: 500,
+              error: emit,
+              success: emit});
   wait();
-  // expect: out("echo called")
+  // expect: out("too late!")
 });
 </script>
 </div>
@@ -472,9 +488,104 @@ snippet(function() {
 });
 </script>
 
+<h2>Stub generation</h2>
+
+<p>By setting the <code>publish</code> configuration property to <code>true</code>, you can automatically publish
+    methods under the <code>channelObject.remote</code> object. Published objects will only be available once
+    the channel is ready, though. Binding and unbinding after the channel is ready will dynamically change the
+    published methods on the remote end.
+
+
+
+<div class="child-code-snippet" id="stubGeneration"></div>
+
+<script class="doctest">
+snippet(function() {
+  chan2 = Channel.build({
+    window: document.getElementById("childId").contentWindow,
+    origin: "*",
+    scope: "testRemoteScope",
+    onReady: function() {
+        emit("ready!")
+        try {
+            chan2.remote.dynamicMethod2(null, emit, emit);
+            emit("onready dynamic 2 worked!");
+        } catch (ex) {
+            emit("onready dynamic 2 failed!");
+        }
+        try {
+            chan2.remote.dynamicMethodSetup(null, function(result) {
+                emit(result);
+                chan2.remote.dynamicMethod(null, function(result) {
+                    emit(result);
+                    try {
+                        chan2.remote.dynamicMethod(null, emit, emit);
+                        emit("final dynamic worked!");
+                    } catch (ex) {
+                        emit("final dynamic failed!");
+                    }
+                }, emit);
+            },emit);
+            emit("onready dynamic setup worked!");
+
+        } catch (ex) {
+            emit("onready dynamic setup failed!");
+        }
+    }
+  });
+  try {
+    chan2.remote.dynamicMethod(null, emit, emit);
+    emit("initial dynamic worked!");
+  } catch (ex) {
+    emit("initial dynamic failed!");
+  }
+  try {
+    chan2.remote.dynamicMethodSetup(null, emit, emit);
+    emit("initial dynamic setup worked!");
+  } catch (ex) {
+    emit("initial dynamic setup failed!");
+  }
+
+  wait();
+
+  // expect: out("initial dynamic failed!")
+  // expect: out("initial dynamic setup failed!")
+  // expect: out("ready!")
+  // expect: out("onready dynamic 2 failed!")
+  // expect: out("onready dynamic setup worked!")
+  // expect: out("dynamicMethodSetup worked!")
+  // expect: out("dynamicRemote worked!")
+  // expect: out("final dynamic failed!")
+});
+</script>
+
+
+<p>If you want to be able to call methods already before a channel is ready, you must declare the method names using
+    the <code>remote</code> configuration property. These invocations will fail (with an error callback) later if the
+    remote end did not bind those methods immediately after creating the channel.</p>
+
+<div class="child-code-snippet" id="staticRemote"></div>
+
+<script class="doctest">
+snippet(function() {
+  chan3 = Channel.build({
+    window: document.getElementById("childId").contentWindow,
+    origin: "*",
+    scope: "testRemoteStaticScope",
+    remote: ["staticMethod"]
+  });
+  chan3.remote.staticMethod(null, emit, emit);
+  wait();
+  // expect: out("staticRemote worked!")
+});
+</script>
+
+
+
 </div>
 <div id="templates" style="display: none;">
-  <div class="more-link"><span>Learn more about <span class="title"></span> &#0187;</span></div>
+    <div class="more-link"><span>Learn more about <span class="title"></span> &#0187;</span></div>
 </div>
+
 </body>
 </html>
