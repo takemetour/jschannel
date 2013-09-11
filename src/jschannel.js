@@ -63,7 +63,6 @@
         // does she exist?
         var exists = false;
 
-
         if (origin === '*') {
             // we must check all other origins, sadly.
             for (var k in s_boundChans) {
@@ -166,7 +165,6 @@
                     }
                 }
             }
-
             if (!delivered && s_boundChans['*'] && s_boundChans['*'][s]) {
                 for (var j = 0; j < s_boundChans['*'][s].length; j++) {
                     if (s_boundChans['*'][s][j].win === w) {
@@ -199,9 +197,6 @@
      *                prepended to message names.  local and remote endpoints
      *                of a single channel must agree upon scope. Scope may
      *                not contain double colons ('::').
-     *   cfg.debugOutput - A boolean value.  If true and window.console.log is
-     *                a function, then debug strings will be emitted to that
-     *                function.
      *   cfg.debugOutput - A boolean value.  If true and window.console.log is
      *                a function, then debug strings will be emitted to that
      *                function.
@@ -271,6 +266,8 @@
             if (typeof cfg.scope !== 'undefined') {
                 if (typeof cfg.scope !== 'string') throw 'scope, when specified, must be a string';
                 if (cfg.scope.split('::').length > 1) throw "scope may not contain double colons: '::'";
+            } else {
+                cfg.scope = "__default";
             }
 
             /* private variables */
@@ -482,12 +479,11 @@
             };
 
             // now register our bound channel for msg routing
-            s_addBoundChan(cfg.window, cfg.origin, ((typeof cfg.scope === 'string') ? cfg.scope : ''), onMessage);
+            s_addBoundChan(cfg.window, cfg.origin, cfg.scope, onMessage);
 
             // scope method names based on cfg.scope specified when the Channel was instantiated
             var scopeMethod = function(m) {
-                if (typeof cfg.scope === 'string' && cfg.scope.length) m = [cfg.scope, m].join("::");
-                return m;
+                return [cfg.scope, m].join("::");
             };
 
             // a small wrapper around postmessage whose primary function is to handle the
@@ -496,9 +492,8 @@
                 if (!msg) throw "postMessage called with null message";
 
                 // delay posting if we're not ready yet.
-                var verb = (ready ? "post  " : "queue ");
-                debug(verb + " message: " + JSON.stringify(msg));
                 if (!force && !ready) {
+                    debug("queue message: " + JSON.stringify(msg));
                     pendingQueue.push(msg);
                 } else {
                     if (typeof cfg.postMessageObserver === 'function') {
@@ -508,6 +503,7 @@
                             debug("postMessageObserver() raised an exception: " + e.toString());
                         }
                     }
+                    debug("post message: " + JSON.stringify(msg) + " with origin " + cfg.origin);
                     cfg.window.postMessage(JSON.stringify(msg), cfg.origin);
                 }
             };
@@ -515,6 +511,7 @@
             var onReady = function(trans, params) {
                 debug('ready msg received');
                 if (ready) throw "received ready message while in ready state.";
+                ready = true;
 
                 if (params.type === 'publish-request') {
                     chanId += '-R';
@@ -539,7 +536,6 @@
                     }
                 }
                 obj.unbind('__ready', true); // now this handler isn't needed any more.
-                ready = true;
                 // flush queue
                 while (pendingQueue.length) {
                     postMessage(pendingQueue.pop());
@@ -679,7 +675,7 @@
                     postMessage({ method: scopeMethod(m.method), params: m.params });
                 },
                 destroy: function () {
-                    s_removeBoundChan(cfg.window, cfg.origin, ((typeof cfg.scope === 'string') ? cfg.scope : ''));
+                    s_removeBoundChan(cfg.window, cfg.origin, cfg.scope);
                     if (window.removeEventListener) window.removeEventListener('message', onMessage, false);
                     else if(window.detachEvent) window.detachEvent('onmessage', onMessage);
                     ready = false;
