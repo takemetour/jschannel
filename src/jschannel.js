@@ -551,21 +551,23 @@
                 var method;
                 for(var i=0; i < stubList.length; i++) {
                     method = stubList[i].toString();
-                    targetObj[method] = function(params, success, error) {
-                        if (success) {
-                            obj.call({
-                                method: method,
-                                params: params,
-                                success: success,
-                                error: error
-                            });
-                        } else {
-                            obj.notify({
-                                method: method,
-                                params: params
-                            });
-                        }
-                    };
+                    targetObj[method] = function(m) {
+                        return function(params, success, error) {
+                            if (success) {
+                                obj.call({
+                                    method: m,
+                                    params: params,
+                                    success: success,
+                                    error: error
+                                });
+                            } else {
+                                obj.notify({
+                                    method: m,
+                                    params: params
+                                });
+                            }
+                        };
+                    }(method);
                 }
             }
 
