@@ -538,7 +538,7 @@
                 obj.unbind('__ready', true); // now this handler isn't needed any more.
                 // flush queue
                 while (pendingQueue.length) {
-                    postMessage(pendingQueue.pop());
+                    postMessage(pendingQueue.splice(0,1)[0]);
                 }
                 publishQueue = [];
                 // invoke onReady observer if provided
