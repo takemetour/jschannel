@@ -47,7 +47,7 @@ var buildFactory = function buildFactory(window) {
     var s_curTranId = Math.floor(Math.random()*1000001);
 
     // no two bound channels in the same javascript evaluation context may have the same origin, scope, and window.
-    // futher if two bound channels have the same window and scope, they may not have *overlapping* origins
+    // further if two bound channels have the same window and scope, they may not have *overlapping* origins
     // (either one or both support '*').  This restriction allows a single onMessage handler to efficiently
     // route messages based on origin and scope.  The s_boundChans maps origins to scopes, to message
     // handlers.  Request and Notification messages are routed using this table.
@@ -63,7 +63,6 @@ var buildFactory = function buildFactory(window) {
 
         // does she exist?
         var exists = false;
-
 
         if (origin === '*') {
             // we must check all other origins, sadly.
@@ -203,9 +202,6 @@ var buildFactory = function buildFactory(window) {
      *   cfg.debugOutput - A boolean value.  If true and window.console.log is
      *                a function, then debug strings will be emitted to that
      *                function.
-     *   cfg.debugOutput - A boolean value.  If true and window.console.log is
-     *                a function, then debug strings will be emitted to that
-     *                function.
      *   cfg.postMessageObserver - A function that will be passed two arguments,
      *                an origin and a message.  It will be passed these immediately
      *                before messages are posted.
@@ -222,14 +218,29 @@ var buildFactory = function buildFactory(window) {
      *                useful when the page in a child frame is reloaded and wants
      *                to re-establish connection with parent window using the same
      *                origin, scope and bindings.
-     *
+     *   cfg.publish - A boolean value. If true, bind will automatically publish
+     *                the method on the remote side. The method will be published under
+     *                channelObject.remote, but it will not be available before the onReady
+     *                callback is called on the other side.
+     *   cfg.remote - An array of method names for which stubs should be generated without
+     *                waiting for remote end to publish them. A string (for a single method name)
+     *                is also accepted. This allows methods under channelObject.remote to be called
+     *                also before onReady callback is called; the invocations will be queued until
+     *                the channel is ready. If the methods do not exist on remote side, the
+     *                error callback will be called.
      */
     return {
         build: function(cfg) {
             var debug = function(m) {
                 if (cfg.debugOutput && window.console && window.console.log) {
                     // try to stringify, if it doesn't work we'll let javascript's built in toString do its magic
-                    try { if (typeof m !== 'string') m = JSON.stringify(m); } catch(e) { }
+                    try { 
+                        if (typeof m !== 'string') {
+                            m = JSON.stringify(m); 
+                        }
+                    }
+                    catch(e) { 
+                    }
                     window.console.log("["+chanId+"] " + m);
                 }
             };
@@ -267,6 +278,8 @@ var buildFactory = function buildFactory(window) {
             if (typeof cfg.scope !== 'undefined') {
                 if (typeof cfg.scope !== 'string') throw 'scope, when specified, must be a string';
                 if (cfg.scope.split('::').length > 1) throw "scope may not contain double colons: '::'";
+            } else {
+                cfg.scope = "__default";
             }
 
             /* private variables */
@@ -287,6 +300,7 @@ var buildFactory = function buildFactory(window) {
             // are we ready yet?  when false we will block outbound messages.
             var ready = false;
             var pendingQueue = [ ];
+            var publishQueue = [ ];
 
             var createTransaction = function(id,origin,callbacks) {
                 var shouldDelayReturn = false;
@@ -342,7 +356,9 @@ var buildFactory = function buildFactory(window) {
                 if (outTbl[transId]) {
                   // XXX: what if client code raises an exception here?
                   var msg = "timeout (" + timeout + "ms) exceeded on method '" + method + "'";
-                  (1,outTbl[transId].error)("timeout_error", msg);
+                  if (outTbl[transId].error) {
+                      outTbl[transId].error("timeout_error", msg);
+                  }
                   delete outTbl[transId];
                   delete s_transIds[transId];
                 }
@@ -365,10 +381,10 @@ var buildFactory = function buildFactory(window) {
 
                 // now, what type of message is this?
                 if (m.id && method) {
+                    inTbl[m.id] = { };
+                    var trans = createTransaction(m.id, origin, m.callbacks ? m.callbacks : [ ]);
                     // a request!  do we have a registered handler for this request?
                     if (regTbl[method]) {
-                        var trans = createTransaction(m.id, origin, m.callbacks ? m.callbacks : [ ]);
-                        inTbl[m.id] = { };
                         try {
                             // callback handling.  we'll magically create functions inside the parameter list for each
                             // callback
@@ -436,6 +452,8 @@ var buildFactory = function buildFactory(window) {
 
                             trans.error(error,message);
                         }
+                    } else { // if no method found, send error
+                        trans.error("method_not_found", "No method '" + method + "' was (yet) bound by the provider");
                     }
                 } else if (m.id && m.callback) {
                     if (!outTbl[m.id] ||!outTbl[m.id].callbacks || !outTbl[m.id].callbacks[m.callback])
@@ -451,10 +469,17 @@ var buildFactory = function buildFactory(window) {
                     } else {
                         // XXX: what if client code raises an exception here?
                         if (m.error) {
-                            (1,outTbl[m.id].error)(m.error, m.message);
+                            // We might not have an error callback
+                            if(outTbl[m.id].error) {
+                                outTbl[m.id].error(m.error, m.message);
+                            }
                         } else {
-                            if (m.result !== undefined) (1,outTbl[m.id].success)(m.result);
-                            else (1,outTbl[m.id].success)();
+                            // But we always have a success callback
+                            if (m.result !== undefined) {
+                                outTbl[m.id].success(m.result);
+                            } else {
+                                outTbl[m.id].success();
+                            }
                         }
                         delete outTbl[m.id];
                         delete s_transIds[m.id];
@@ -472,12 +497,11 @@ var buildFactory = function buildFactory(window) {
             };
 
             // now register our bound channel for msg routing
-            s_addBoundChan(cfg.window, cfg.origin, ((typeof cfg.scope === 'string') ? cfg.scope : ''), onMessage);
+            s_addBoundChan(cfg.window, cfg.origin, cfg.scope, onMessage);
 
             // scope method names based on cfg.scope specified when the Channel was instantiated
             var scopeMethod = function(m) {
-                if (typeof cfg.scope === 'string' && cfg.scope.length) m = [cfg.scope, m].join("::");
-                return m;
+                return [cfg.scope, m].join("::");
             };
 
             // a small wrapper around postmessage whose primary function is to handle the
@@ -486,9 +510,8 @@ var buildFactory = function buildFactory(window) {
                 if (!msg) throw "postMessage called with null message";
 
                 // delay posting if we're not ready yet.
-                var verb = (ready ? "post  " : "queue ");
-                debug(verb + " message: " + JSON.stringify(msg));
                 if (!force && !ready) {
+                    debug("queue message: " + JSON.stringify(msg));
                     pendingQueue.push(msg);
                 } else {
                     if (typeof cfg.postMessageObserver === 'function') {
@@ -498,60 +521,127 @@ var buildFactory = function buildFactory(window) {
                             debug("postMessageObserver() raised an exception: " + e.toString());
                         }
                     }
-
+                    debug("post message: " + JSON.stringify(msg) + " with origin " + cfg.origin);
                     cfg.window.postMessage(JSON.stringify(msg), cfg.origin);
                 }
             };
 
-            var onReady = function(trans, type) {
+            var onReady = function(trans, params) {
                 debug('ready msg received');
                 if (ready && !cfg.reconnect) {
-                    throw "received ready message while in ready state.  help!";
-                } else {
-                    ready = false;
+                    throw "received ready message while in ready state.";
                 }
+                ready = true;
 
                 // only append suffix to chanId once:
-                if (chanId.length < 6){
-                    chanId += (type === 'ping') ? '-R' : '-L';
+                if (chanId.length < 6) {
+	                if (params.type === 'publish-request') {
+	                    chanId += '-R';
+	                } else {
+	                    chanId += '-L';
+	                }
+                }
+                debug('ready msg accepted.');
+
+                if (params.type === 'publish-request') {
+                    obj.notify({ method: '__ready', params: {
+                        type:'publish-reply',
+                        publish: publishQueue
+                    } });
+                }
+
+                for (var i = 0; i < params.publish.length; i++) {
+                    if (params.publish[i].action === "bind") {
+                        createStubs([params.publish[i].method], obj.remote);
+                    } else { // unbind
+                        delete obj.remote[params.publish[i].method];
+                    }
                 }
 
                 //unbind ready handler unless we allow reconnecting:
                 if (!cfg.reconnect) {
-                    obj.unbind('__ready');
-                }
-
-                ready = true;
-                debug('ready msg accepted.');
-
-                if (type === 'ping') {
-                    obj.notify({ method: '__ready', params: 'pong' });
+                    obj.unbind('__ready', true); // now this handler isn't needed any more.
                 }
 
                 // flush queue
                 while (pendingQueue.length) {
-                    postMessage(pendingQueue.pop());
+                    postMessage(pendingQueue.splice(0, 1)[0]);
                 }
-
+                publishQueue = [];
                 // invoke onReady observer if provided
                 if (typeof cfg.onReady === 'function') cfg.onReady(obj);
+
+            };
+
+            var createStubs = function(stubList, targetObj) {
+                stubList = [].concat(stubList); // Coerce into array, allows string to be used for single-item array
+                var method;
+                for(var i=0; i < stubList.length; i++) {
+                    method = stubList[i].toString();
+                    targetObj[method] = function(m) {
+                        return function(params, success, error) {
+                            if (success) {
+                                obj.call({
+                                    method: m,
+                                    params: params,
+                                    success: success,
+                                    error: error
+                                });
+                            } else {
+                                obj.notify({
+                                    method: m,
+                                    params: params
+                                });
+                            }
+                        };
+                    }(method);
+                }
+            }
+
+            // Dynamic publish from remote
+            var onBind = function(trans, method) {
+                createStubs([method], obj.remote);
+            };
+
+            // Dynamic unpublish from remote
+            var onUnbind = function(trans, method) {
+                if (obj.remote[method]) {
+                    delete obj.remote[method];
+                }
             };
 
             var obj = {
+
+                remote: {},
+
                 // tries to unbind a bound message handler.  returns false if not possible
-                unbind: function (method) {
+                unbind: function (method, doNotPublish) {
                     if (regTbl[method]) {
                         if (!(delete regTbl[method])) throw ("can't delete method: " + method);
+                        if (cfg.publish && ! doNotPublish) {
+                            if (ready) {
+                                obj.notify({ method: '__unbind', params: method });
+                            } else {
+                                publishQueue.push({ action: 'unbind', method: method });
+                            }
+                        }
                         return true;
                     }
                     return false;
                 },
-                bind: function (method, cb) {
+                bind: function (method, cb, doNotPublish) {
                     if (!method || typeof method !== 'string') throw "'method' argument to bind must be string";
                     if (!cb || typeof cb !== 'function') throw "callback missing from bind params";
 
                     if (regTbl[method]) throw "method '"+method+"' is already bound!";
                     regTbl[method] = cb;
+                    if (cfg.publish && ! doNotPublish) {
+                        if (ready) {
+                            obj.notify({ method: '__bind', params: method });
+                        } else {
+                            publishQueue.push({ action: 'bind', method: method });
+                        }
+                    }
                     return this;
                 },
                 call: function(m) {
@@ -614,7 +704,7 @@ var buildFactory = function buildFactory(window) {
                     postMessage({ method: scopeMethod(m.method), params: m.params });
                 },
                 destroy: function () {
-                    s_removeBoundChan(cfg.window, cfg.origin, ((typeof cfg.scope === 'string') ? cfg.scope : ''));
+                    s_removeBoundChan(cfg.window, cfg.origin, cfg.scope);
                     if (window.removeEventListener) window.removeEventListener('message', onMessage, false);
                     else if(window.detachEvent) window.detachEvent('onmessage', onMessage);
                     ready = false;
@@ -628,9 +718,20 @@ var buildFactory = function buildFactory(window) {
                 }
             };
 
-            obj.bind('__ready', onReady);
+            obj.bind('__ready', onReady, true);
+            obj.bind('__bind', onBind, true);
+            obj.bind('__unbind', onUnbind, true);
+            if (cfg.remote) {
+                createStubs(cfg.remote, obj.remote);
+            }
             setTimeout(function() {
-                postMessage({ method: scopeMethod('__ready'), params: "ping" }, true);
+                if (chanId.length > 0) { // The channel might already have been destroyed
+                    postMessage({ method: scopeMethod('__ready'), params: {
+                        type: "publish-request",
+                        publish: publishQueue
+                    } }, true);
+                }
+
             }, 0);
 
             return obj;

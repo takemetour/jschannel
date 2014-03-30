@@ -1,6 +1,5 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
-          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<!DOCTYPE html>
+<html>
 <head>
 <!-- note, a debug version is also available to us, that would validate
      all sorts stuff, including the inputs and outputs to our functions --> 
@@ -86,6 +85,13 @@ chan.bind("twiddleThumbs", function(trans) {
 });
 </script>
 
+<script id="timeouting">
+chan.bind("timeouting", function(trans) {
+    setTimeout(function() { trans.complete("too late!"); }, 250);
+    trans.delayReturn(true);
+});
+</script>
+
 <script id="get-stuff">
 chan.bind("getStuff", function(trans) {
   setTimeout(function() {
@@ -126,7 +132,37 @@ chan.bind("echo", function(trans, a) { return a });
 <script id="recursive">
 chan.bind("recursive", function(trans, params) {
   return params.text;
-}
+});
 </script>
+
+<script id="stubGeneration">
+var chan2 = Channel.build({window: window.parent,
+    origin: "*",
+    scope: "testRemoteScope",
+    publish: true
+});
+chan2.bind("dynamicMethod2", function(trans, params) {
+    return "dynamicRemote2 worked!";
+});
+chan2.unbind("dynamicMethod2");
+chan2.bind("dynamicMethodSetup", function(trans, params) {
+    chan2.bind("dynamicMethod", function(trans, params) {
+        chan2.unbind("dynamicMethod");
+        return "dynamicRemote worked!";
+    });
+    return "dynamicMethodSetup worked!";
+});
+</script>
+
+<script id="staticRemote">
+var chan3 = Channel.build({window: window.parent,
+    origin: "*",
+    scope: "testRemoteStaticScope"
+});
+chan3.bind("staticMethod", function(trans, params) {
+    return "staticRemote worked!";
+});
+</script>
+
 </body>
 </html>
