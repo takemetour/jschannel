@@ -624,3 +624,10 @@
         }
     };
 })();
+
+//enable loading via AMD
+if (typeof define === 'function' && define.amd) {
+    define(function() {
+        return Channel;
+    });
+}
