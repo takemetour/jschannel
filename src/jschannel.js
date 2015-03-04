@@ -36,9 +36,24 @@
  *    + (optional) any params
  */
 
-;var Channel = (function() {
-    "use strict";
-
+// Universal module definition //
+(function (root, factory) {
+  if (typeof exports === 'object') {
+    // CommonJS
+    module.exports = factory();
+  } else if (typeof define === 'function' && define.amd) {
+    // AMD
+    define([], function () {
+      return (root.Channel = factory());
+    });
+  } else {
+    // Global Variables
+    root.Channel = factory();
+  }
+}(this, function () {
+  "use strict";
+  var Channel = (function() {
+    
     // current transaction id, start out at a random *odd* number between 1 and a million
     // There is one current transaction counter id per page, and it's shared between
     // channel instances.  That means of all messages posted from a single javascript
@@ -617,4 +632,8 @@
             return obj;
         }
     };
-})();
+  })();
+  
+
+  return Channel;
+}));
