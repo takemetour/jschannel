@@ -36,10 +36,24 @@
  *    + (optional) any params
  */
 
-;var Channel = (function() {
-"use strict";
+// Universal module definition //
+(function (root, factory) {
+  if (typeof exports === 'object') {
+    // CommonJS
+    module.exports = factory();
+  } else if (typeof define === 'function' && define.amd) {
+    // AMD
+    define([], function () {
+      return (root.Channel = factory());
+    });
+  } else {
+    // Global Variables
+    root.Channel = factory();
+  }
+}(this, function () {
+  "use strict";
+  var Channel = (function() {
 
-var buildFactory = function buildFactory(window) {
     // current transaction id, start out at a random *odd* number between 1 and a million
     // There is one current transaction counter id per page, and it's shared between
     // channel instances.  That means of all messages posted from a single javascript
@@ -234,12 +248,12 @@ var buildFactory = function buildFactory(window) {
             var debug = function(m) {
                 if (cfg.debugOutput && window.console && window.console.log) {
                     // try to stringify, if it doesn't work we'll let javascript's built in toString do its magic
-                    try { 
+                    try {
                         if (typeof m !== 'string') {
-                            m = JSON.stringify(m); 
+                            m = JSON.stringify(m);
                         }
                     }
-                    catch(e) { 
+                    catch(e) {
                     }
                     window.console.log("["+chanId+"] " + m);
                 }
@@ -660,7 +674,7 @@ var buildFactory = function buildFactory(window) {
                             throw "params cannot be a recursive data structure"
                         }
                         seen.push(obj);
-                       
+
                         if (typeof obj === 'object') {
                             for (var k in obj) {
                                 if (!obj.hasOwnProperty(k)) continue;
@@ -737,18 +751,8 @@ var buildFactory = function buildFactory(window) {
             return obj;
         }
     };
-};
+  })();
 
-var Channel = buildFactory(window);
-Channel.buildFactory = buildFactory;
 
-return Channel;
-
-})();
-
-//enable loading via AMD
-if (typeof define === 'function' && define.amd) {
-    define(function() {
-        return Channel;
-    });
-}
+  return Channel;
+}));
