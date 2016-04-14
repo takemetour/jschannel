@@ -36,6 +36,11 @@
  *    + (optional) any params
  */
 
+ // Blank global window for nodejs runtime //
+if (typeof(window) === 'undefined') {
+  global.window = {};
+}
+
 // Universal module definition //
 (function (root, factory) {
   if (typeof exports === 'object') {
